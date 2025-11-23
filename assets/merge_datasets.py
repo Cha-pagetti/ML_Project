@@ -31,7 +31,7 @@ def load_and_validate_datasets(file_paths):
     데이터셋을 로드하고 검증
     
     Returns:
-        list: (images, labels, filename) 튜플들의 리스트
+        list: (images, digit_labels, fg_labels, bg_labels, filename) 튜플들의 리스트
     """
     datasets = []
     first_shape = None
@@ -49,15 +49,20 @@ def load_and_validate_datasets(file_paths):
             data = np.load(file_path)
             
             # 키 확인
-            if 'train_images' not in data or 'train_labels' not in data:
-                raise ValueError(f"❌ 필수 키가 없습니다. 필요: 'train_images', 'train_labels'\n   실제: {list(data.keys())}")
+            required_keys = ['train_images', 'digit_labels', 'fg_color_labels', 'bg_color_labels']
+            if not all(key in data for key in required_keys):
+                raise ValueError(f"❌ 필수 키가 없습니다. 필요: {required_keys}\n   실제: {list(data.keys())}")
             
             images = data['train_images']
-            labels = data['train_labels']
+            digit_labels = data['digit_labels']
+            fg_labels = data['fg_color_labels']
+            bg_labels = data['bg_color_labels']
             
             # Shape 확인
             print(f"   Images: {images.shape}, dtype: {images.dtype}")
-            print(f"   Labels: {labels.shape}, dtype: {labels.dtype}")
+            print(f"   Digit Labels: {digit_labels.shape}, dtype: {digit_labels.dtype}")
+            print(f"   FG Color Labels: {fg_labels.shape}, dtype: {fg_labels.dtype}")
+            print(f"   BG Color Labels: {bg_labels.shape}, dtype: {bg_labels.dtype}")
             
             # 첫 번째 파일의 shape를 기준으로 설정
             if first_shape is None:
@@ -75,13 +80,13 @@ def load_and_validate_datasets(file_paths):
                 print(f"   ✅ Shape 일치: {first_shape}")
             
             # 레이블 개수 확인
-            if len(images) != len(labels):
+            if not (len(images) == len(digit_labels) == len(fg_labels) == len(bg_labels)):
                 raise ValueError(
                     f"❌ 이미지와 레이블 개수 불일치!\n"
-                    f"   Images: {len(images)}, Labels: {len(labels)}"
+                    f"   Images: {len(images)}, Digit: {len(digit_labels)}, FG: {len(fg_labels)}, BG: {len(bg_labels)}"
                 )
             
-            datasets.append((images, labels, filename))
+            datasets.append((images, digit_labels, fg_labels, bg_labels, filename))
             print(f"   ✅ 로드 성공: {len(images)}개 샘플")
             
         except Exception as e:
@@ -98,25 +103,33 @@ def merge_datasets(datasets):
     print("="*60)
     
     all_images = []
-    all_labels = []
+    all_digit_labels = []
+    all_fg_labels = []
+    all_bg_labels = []
     
-    for images, labels, filename in datasets:
+    for images, digit_labels, fg_labels, bg_labels, filename in datasets:
         all_images.append(images)
-        all_labels.append(labels)
+        all_digit_labels.append(digit_labels)
+        all_fg_labels.append(fg_labels)
+        all_bg_labels.append(bg_labels)
         print(f"   추가: {filename} ({len(images)}개)")
     
     # numpy 배열로 연결
     merged_images = np.concatenate(all_images, axis=0)
-    merged_labels = np.concatenate(all_labels, axis=0)
+    merged_digit_labels = np.concatenate(all_digit_labels, axis=0)
+    merged_fg_labels = np.concatenate(all_fg_labels, axis=0)
+    merged_bg_labels = np.concatenate(all_bg_labels, axis=0)
     
     print(f"\n   ✅ 병합 완료!")
     print(f"   총 이미지: {merged_images.shape}")
-    print(f"   총 레이블: {merged_labels.shape}")
+    print(f"   총 숫자 레이블: {merged_digit_labels.shape}")
+    print(f"   총 전경색 레이블: {merged_fg_labels.shape}")
+    print(f"   총 배경색 레이블: {merged_bg_labels.shape}")
     
-    return merged_images, merged_labels
+    return merged_images, merged_digit_labels, merged_fg_labels, merged_bg_labels
 
 
-def save_merged_dataset(images, labels, source_files):
+def save_merged_dataset(images, digit_labels, fg_labels, bg_labels, source_files):
     """병합된 데이터셋을 저장"""
     root = tk.Tk()
     root.withdraw()
@@ -140,7 +153,9 @@ def save_merged_dataset(images, labels, source_files):
     np.savez_compressed(
         save_path,
         train_images=images,
-        train_labels=labels
+        digit_labels=digit_labels,
+        fg_color_labels=fg_labels,
+        bg_color_labels=bg_labels
     )
     
     file_size_mb = os.path.getsize(save_path) / 1024 / 1024
@@ -182,10 +197,10 @@ def main():
         datasets = load_and_validate_datasets(file_paths)
         
         # 3. 병합
-        merged_images, merged_labels = merge_datasets(datasets)
+        merged_images, merged_digit_labels, merged_fg_labels, merged_bg_labels = merge_datasets(datasets)
         
         # 4. 저장
-        save_path = save_merged_dataset(merged_images, merged_labels, file_paths)
+        save_path = save_merged_dataset(merged_images, merged_digit_labels, merged_fg_labels, merged_bg_labels, file_paths)
         
         if save_path:
             messagebox.showinfo(
